@@ -8,10 +8,9 @@ import config
 from cli.console import console
 
 def _build_dns_query(domain: str) -> bytes:
-    """Собирает бинарный пакет DNS-запроса (A-запись)."""
-    tx_id = os.urandom(2)  # Случайный ID транзакции
-    flags = b'\x01\x00'    # Стандартный запрос, желательна рекурсия
-    qdcount = b'\x00\x01'  # 1 вопрос
+    tx_id = os.urandom(2)
+    flags = b'\x01\x00'
+    qdcount = b'\x00\x01'
     ancount = nscount = arcount = b'\x00\x00'
     header = tx_id + flags + qdcount + ancount + nscount + arcount
 
@@ -19,13 +18,11 @@ def _build_dns_query(domain: str) -> bytes:
     for part in domain.split('.'):
         qname += bytes([len(part)]) + part.encode('ascii')
     qname += b'\x00'
-    qtype = b'\x00\x01'    # A record (IPv4)
-    qclass = b'\x00\x01'   # IN class
 
-    return header + qname + qtype + qclass
+    return header + qname + b'\x00\x01' + b'\x00\x01'  # QTYPE=A, QCLASS=IN
+
 
 def _parse_dns_response(data: bytes, tx_id: bytes) -> Union[List[str], str]:
-    """Разбирает бинарный ответ DNS-сервера."""
     if len(data) < 12:
         raise ValueError("Слишком короткий ответ")
     if data[:2] != tx_id:
@@ -41,63 +38,64 @@ def _parse_dns_response(data: bytes, tx_id: bytes) -> Union[List[str], str]:
     qdcount, ancount, _, _ = struct.unpack(">HHHH", data[4:12])
     offset = 12
 
-    # Хелпер для пропуска имен (с учетом DNS-сжатия / указателей 0xC0)
-    def skip_name(current_offset):
+    def skip_name(pos):
         while True:
-            if current_offset >= len(data): break
-            if (data[current_offset] & 0xC0) == 0xC0:
-                return current_offset + 2
-            length = data[current_offset]
+            if pos >= len(data):
+                break
+            if (data[pos] & 0xC0) == 0xC0:
+                return pos + 2
+            length = data[pos]
             if length == 0:
-                return current_offset + 1
-            current_offset += length + 1
-        return current_offset
+                return pos + 1
+            pos += length + 1
+        return pos
 
-    # Пропускаем блок Questions
     for _ in range(qdcount):
         offset = skip_name(offset)
-        offset += 4  # QTYPE, QCLASS
+        offset += 4  # QTYPE + QCLASS
 
     ips = []
-    # Парсим блок Answers
     for _ in range(ancount):
         offset = skip_name(offset)
-        if offset + 10 > len(data): break
-        atype, aclass, ttl, rdlength = struct.unpack(">HHIH", data[offset:offset+10])
+        if offset + 10 > len(data):
+            break
+        atype, aclass, _, rdlength = struct.unpack(">HHIH", data[offset:offset + 10])
         offset += 10
-
-        rdata = data[offset:offset+rdlength]
+        rdata = data[offset:offset + rdlength]
         offset += rdlength
-
-        # Если это IPv4 адрес (A-запись)
         if atype == 1 and aclass == 1 and rdlength == 4:
             ips.append(socket.inet_ntoa(rdata))
 
     return ips if ips else "EMPTY"
 
+
 class _DNSDatagramProtocol(asyncio.DatagramProtocol):
     def __init__(self):
         self.future = asyncio.get_event_loop().create_future()
+
     def connection_made(self, transport):
         self.transport = transport
+
     def datagram_received(self, data, addr):
         if not self.future.done():
             self.future.set_result(data)
+
     def error_received(self, exc):
         if not self.future.done():
             self.future.set_exception(exc)
+
     def connection_lost(self, exc):
         pass
 
+
 async def _resolve_udp_native(nameserver: str, domain: str, timeout: float) -> Union[List[str], str]:
-    """Отправляет UDP запрос к DNS серверу через нативный asyncio."""
     loop = asyncio.get_running_loop()
     req_data = _build_dns_query(domain)
     tx_id = req_data[:2]
 
     transport, protocol = await loop.create_datagram_endpoint(
         lambda: _DNSDatagramProtocol(),
-        remote_addr=(nameserver, 53)
+        remote_addr=(nameserver, 53),
     )
     try:
         transport.sendto(req_data)
@@ -106,16 +104,12 @@ async def _resolve_udp_native(nameserver: str, domain: str, timeout: float) -> U
     finally:
         transport.close()
 
-# ==============================================================================
-# 2. ОСНОВНАЯ ЛОГИКА И СБОРЩИКИ (Полностью асинхронные)
-# ==============================================================================
+
+# ── Probe-функции ─────────────────────────────────────────────────────────────
 
 async def _probe_udp_server(nameserver: str, domains: list) -> dict:
-    """Параллельно резолвит домены через UDP."""
-    ok = timeout_cnt = error = 0
-    results = {}
-
-    async def check_single(domain):
+    """Параллельно резолвит домены через UDP DNS."""
+    async def _query(domain):
         try:
             res = await _resolve_udp_native(nameserver, domain, config.DNS_CHECK_TIMEOUT)
             return domain, "OK", res
@@ -124,10 +118,10 @@ async def _probe_udp_server(nameserver: str, domains: list) -> dict:
         except Exception:
             return domain, "ERROR", None
 
-    # Запускаем все запросы одновременно!
-    tasks = [check_single(d) for d in domains]
-    completed = await asyncio.gather(*tasks)
+    completed = await asyncio.gather(*[_query(d) for d in domains])
 
+    ok = timeout_cnt = error = 0
+    results = {}
     for domain, status, res in completed:
         if status == "OK":
             results[domain] = res
@@ -141,13 +135,12 @@ async def _probe_udp_server(nameserver: str, domains: list) -> dict:
 
     return {"ok": ok, "timeout": timeout_cnt, "error": error, "results": results}
 
+
 async def _probe_doh_server(doh_url: str, domains: list) -> dict:
-    """Параллельно резолвит домены через DoH."""
-    ok = timeout_cnt = blocked = 0
-    results = {}
+    """Параллельно резолвит домены через DoH, переиспользуя одно соединение."""
     headers = {"Accept": "application/dns-json", "User-Agent": config.USER_AGENT}
 
-    async def check_single(client, domain):
+    async def _query(client, domain):
         try:
             resp = await client.get(doh_url, params={"name": domain, "type": "A"})
             if resp.status_code != 200:
@@ -162,17 +155,14 @@ async def _probe_doh_server(doh_url: str, domains: list) -> dict:
         except Exception:
             return domain, "BLOCKED", None
 
-    # Одно соединение для всех запросов — это намного быстрее
     async with httpx.AsyncClient(timeout=config.DNS_CHECK_TIMEOUT, verify=False, headers=headers) as client:
-        tasks = [check_single(client, d) for d in domains]
-        completed = await asyncio.gather(*tasks)
+        completed = await asyncio.gather(*[_query(client, d) for d in domains])
 
+    ok = timeout_cnt = blocked = 0
+    results = {}
     for domain, status, res in completed:
-        if status == "OK":
-            results[domain] = res
-            ok += 1
-        elif status == "NXDOMAIN":
-            results[domain] = "NXDOMAIN"
+        if status in ("OK", "NXDOMAIN"):
+            results[domain] = res if status == "OK" else "NXDOMAIN"
             ok += 1
         elif status == "TIMEOUT":
             results[domain] = "TIMEOUT"
@@ -183,8 +173,11 @@ async def _probe_doh_server(doh_url: str, domains: list) -> dict:
 
     return {"ok": ok, "timeout": timeout_cnt, "blocked": blocked, "results": results}
 
+
+# ── Публичные функции ─────────────────────────────────────────────────────────
+
 async def collect_stub_ips_silently() -> set:
-    """Тихо собирает IP заглушек провайдера (если запущены только HTTP/TCP тесты)."""
+    """Тихо собирает IP заглушек провайдера (если DNS-тест не запущен)."""
     probe = None
     for udp_ip, _ in config.DNS_UDP_SERVERS:
         probe = await _probe_udp_server(udp_ip, config.DNS_CHECK_DOMAINS)
@@ -201,12 +194,16 @@ async def collect_stub_ips_silently() -> set:
                 ip_count[ip] = ip_count.get(ip, 0) + 1
     return {ip for ip, count in ip_count.items() if count >= 2}
 
+
 async def check_dns_integrity() -> Tuple[set, int]:
     if not config.DNS_CHECK_ENABLED:
         return set(), 0
 
     total = len(config.DNS_CHECK_DOMAINS)
-    console.print("\n[bold]Проверка подмены DNS[/bold]")
+    console.print(
+        f"\n[bold]Проверка подмены DNS[/bold]  "
+        f"[dim]Целей: {total} | timeout: {config.DNS_CHECK_TIMEOUT}s[/dim]"
+    )
     console.print("[dim]Проверяем, перехватывает ли провайдер DNS запросы...[/dim]\n")
 
     udp_probe, udp_label = None, "UDP DNS (недоступен)"
@@ -214,35 +211,29 @@ async def check_dns_integrity() -> Tuple[set, int]:
 
     with console.status("[bold cyan]Инициализация проверок...[/bold cyan]") as status:
 
-        # ── Ищем живой UDP-сервер ─────────────────────────────────────────
         for udp_ip, udp_name in config.DNS_UDP_SERVERS:
             status.update(f"[cyan]Поиск UDP DNS:[/cyan] проверяю [yellow]{udp_ip} ({udp_name})[/yellow] ...")
-
             probe = await _probe_udp_server(udp_ip, config.DNS_CHECK_DOMAINS)
             bad = probe["timeout"] + probe["error"]
-
             if total - bad >= max(1, total // 2):
                 udp_probe = probe
-                udp_label = f"UDP DNS"
+                udp_label = "UDP DNS"
                 console.print(f"[dim]• UDP сервер выбран: [green]{udp_ip} ({udp_name})[/green][/dim]")
                 break
             else:
-                console.print(f"[dim]• UDP [yellow]{udp_ip}[/yellow] недоступен (VPN или блок). Пропуск.[/dim]")
+                console.print(f"[dim]• UDP [yellow]{udp_ip}[/yellow] недоступен. Пропуск.[/dim]")
 
         if udp_probe is None:
-            console.print("[red]× Все UDP DNS-серверы недоступны (Вероятно, заблокированы VPN или провайдером)[/red]")
+            console.print("[red]× Все UDP DNS-серверы недоступны[/red]")
             udp_probe = {"results": {d: "UNAVAIL" for d in config.DNS_CHECK_DOMAINS}}
 
-        # ── Ищем живой DoH-сервер ─────────────────────────────────────────
         for doh_url, doh_name in config.DNS_DOH_SERVERS:
-            status.update(f"[cyan]Поиск DoH DNS:[/cyan] проверяю [yellow]{doh_url} ({doh_name})[/yellow] ...")
-
+            status.update(f"[cyan]Поиск DoH DNS:[/cyan] проверяю [yellow]{doh_name}[/yellow] ...")
             probe = await _probe_doh_server(doh_url, config.DNS_CHECK_DOMAINS)
             bad = probe["timeout"] + probe.get("blocked", 0)
-
             if total - bad >= max(1, total // 2):
                 doh_probe = probe
-                doh_label = f"DoH"
+                doh_label = "DoH"
                 console.print(f"[dim]• DoH сервер выбран: [green]{doh_url} ({doh_name})[/green][/dim]\n")
                 break
             else:
@@ -252,10 +243,8 @@ async def check_dns_integrity() -> Tuple[set, int]:
             console.print("[red]× Все DoH-серверы недоступны[/red]")
             doh_probe = {"results": {d: "UNAVAIL" for d in config.DNS_CHECK_DOMAINS}}
 
-    # ── анализ результатов ─────────────────────────────────────────────
-    dns_intercept_count = 0
-    doh_blocked_count = 0
-    timeout_count = 0
+    # ── Анализ результатов ────────────────────────────────────────────────────
+    dns_intercept_count = doh_blocked_count = timeout_count = 0
     udp_ips_collection: dict = {}
     rows = []
 
@@ -272,41 +261,45 @@ async def check_dns_integrity() -> Tuple[set, int]:
         udp_str = ", ".join(udp_ips[:2]) if udp_ips else str(udp_res or "—")
         doh_str = ", ".join(doh_ips[:2]) if doh_ips else str(doh_res or "—")
 
-        if udp_res == "TIMEOUT": timeout_count += 1
-        if doh_res == "BLOCKED": doh_blocked_count += 1
-
-        UDP_ERROR_MAP = {
-            "TIMEOUT": "[red]× DNS ПЕРЕХВАТ[/red]",
-            "NXDOMAIN": "[red]× FAKE NXDOMAIN[/red]",
-            "EMPTY": "[red]× FAKE EMPTY[/red]"
-        }
+        if udp_res == "TIMEOUT":
+            timeout_count += 1
+        if doh_res == "BLOCKED":
+            doh_blocked_count += 1
 
         if doh_ips and udp_ips:
             if set(doh_ips) == set(udp_ips):
-                status = "[green]√ DNS OK[/green]"
+                row_status = "[green]√ DNS OK[/green]"
             else:
-                status = "[red]× DNS ПОДМЕНА[/red]"
+                row_status = "[red]× DNS ПОДМЕНА[/red]"
                 dns_intercept_count += 1
-        elif doh_ips:  # Есть DoH, но нет UDP
-            status = UDP_ERROR_MAP.get(udp_res, "[yellow]× UDP недоступен[/yellow]")
-            if udp_res in UDP_ERROR_MAP:
+        elif doh_ips:
+            # UDP вернул не-IP — признак перехвата
+            intercept_labels = {
+                "TIMEOUT":  "[red]× DNS ПЕРЕХВАТ[/red]",
+                "NXDOMAIN": "[red]× FAKE NXDOMAIN[/red]",
+                "EMPTY":    "[red]× FAKE EMPTY[/red]",
+            }
+            if udp_res in intercept_labels:
+                row_status = intercept_labels[udp_res]
                 dns_intercept_count += 1
-        elif udp_ips:  # Есть UDP, но нет DoH
+            else:
+                row_status = "[yellow]× UDP недоступен[/yellow]"
+        elif udp_ips:
             reason = "заблокирован" if doh_res == "BLOCKED" else "недоступен"
-            status = f"[yellow]× DoH {reason}[/yellow]"
+            row_status = f"[yellow]× DoH {reason}[/yellow]"
         else:
-            status = "[red]× Оба недоступны[/red]"
+            row_status = "[red]× Оба недоступны[/red]"
 
-        rows.append([domain, doh_str, udp_str, status])
+        rows.append([domain, doh_str, udp_str, row_status])
 
-    # ── детектируем заглушки ───────────────────────────────────────────
+    # ── Заглушки ──────────────────────────────────────────────────────────────
     ip_count: dict = {}
     for ips in udp_ips_collection.values():
         for ip in ips:
             ip_count[ip] = ip_count.get(ip, 0) + 1
     stub_ips = {ip for ip, cnt in ip_count.items() if cnt >= 2}
 
-    # ── таблица ────────────────────────────────────────────────────────
+    # ── Таблица ───────────────────────────────────────────────────────────────
     from rich.table import Table
     dns_table = Table(show_header=True, header_style="bold magenta", border_style="dim")
     dns_table.add_column("Домен", style="cyan")
@@ -318,14 +311,14 @@ async def check_dns_integrity() -> Tuple[set, int]:
     console.print(dns_table)
     console.print()
 
-    # ── Шаг 6: диагностика ────────────────────────────────────────────────────
+    # ── Диагностика ───────────────────────────────────────────────────────────
     if dns_intercept_count > 0:
         console.print("[bold red][!] Ваш интернет-провайдер перехватывает DNS-запросы[/bold red]")
         console.print("Провайдер подменяет ответы UDP DNS на заглушки или ложные NXDOMAIN/EMPTY\n")
         console.print(
             "[bold yellow]ВНИМАНИЕ: Это независимая проверка и она не использует ваши настроенные DNS![/bold yellow]\n"
             "[bold yellow]Рекомендация:[/bold yellow] Настройте DoH на устройстве и роутере\n"
-            "[bold green]Если DoH уже настроен — игнорируйте эту проверку.[bold green]\n"
+            "[bold green]Если DoH уже настроен — игнорируйте эту проверку.[/bold green]\n"
         )
     if doh_blocked_count > 0:
         console.print("[bold red][!] DoH заблокирован[/bold red] — провайдер блокирует зашифрованный DNS\n")
