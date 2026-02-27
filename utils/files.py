@@ -49,7 +49,7 @@ def load_domains(filepath: str = "domains.txt") -> list[str]:
         sys.exit(1)
 
 
-def load_tcp_targets(filepath: str = "tcp_16_20_targets3.json") -> list:
+def load_tcp_targets(filepath: str = "tcp16.json") -> list:
     full_path = get_resource_path(filepath)
 
     if not os.path.exists(full_path):
