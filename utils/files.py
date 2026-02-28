@@ -1,67 +1,78 @@
-import os
 import sys
 import json
+from pathlib import Path
+from typing import List, Any
 
 from cli.console import console
-from typing import List
 
-
-def get_exe_dir() -> str:
-    """Директория рядом с .exe или точкой входа при запуске напрямую."""
-    if getattr(sys, 'frozen', False):
-        return os.path.dirname(sys.executable)
-    # __file__ здесь — utils/files.py, поднимаемся на уровень выше к корню проекта
-    return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-
-
-def get_resource_path(relative_path: str) -> str:
-    """Ищет файл рядом с exe/скриптом, затем внутри PyInstaller-бандла."""
-    external = os.path.join(get_exe_dir(), relative_path)
-    if os.path.exists(external):
-        return external
-
+def wait_and_exit(code: int = 1):
+    print("\nНажмите любую клавишу для выхода...")
     try:
-        bundled = os.path.join(sys._MEIPASS, relative_path)
-        if os.path.exists(bundled):
-            return bundled
-    except AttributeError:
-        pass
+        import msvcrt
+        msvcrt.getch()
+    except ImportError:
+        input()
+    sys.exit(code)
 
-    return external
+def get_base_dir() -> Path:
+    """Возвращает путь к директории запуска (рядом с .exe или корнем проекта)."""
+    if getattr(sys, 'frozen', False):
+        return Path(sys.executable).parent
+    # __file__ находится в utils/files.py, поднимаемся на 2 уровня вверх к корню
+    return Path(__file__).resolve().parent.parent
 
+def get_resource_path(relative_path: str) -> Path:
+    """Ищет файл сначала снаружи, затем во внутреннем бандле PyInstaller."""
+    base_dir = get_base_dir()
+    external_path = base_dir / relative_path
+
+    if external_path.exists():
+        return external_path
+
+    # Если запущено из-под PyInstaller, проверяем временную папку _MEIPASS
+    if hasattr(sys, '_MEIPASS'):
+        bundled_path = Path(sys._MEIPASS) / relative_path
+        if bundled_path.exists():
+            return bundled_path
+
+    return external_path
 
 def load_domains(filepath: str = "domains.txt") -> List[str]:
-    full_path = get_resource_path(filepath)
+    """Загружает список доменов из файла."""
+    path = get_resource_path(filepath)
 
-    if not os.path.exists(full_path):
+    if not path.exists():
         console.print(f"[bold red]КРИТИЧЕСКАЯ ОШИБКА: Файл не найден![/bold red]")
-        console.print(f"[red]Путь: {full_path}[/red]")
-        console.print("[yellow]Положите domains.txt рядом со скриптом.[/yellow]")
-        sys.exit(1)
+        console.print(f"[red]Путь: {path}[/red]")
+        console.print(f"[yellow]Положите {filepath} рядом с программой.[/yellow]")
+        wait_and_exit()
 
     try:
-        with open(full_path, 'r', encoding='utf-8') as f:
+        with open(path, 'r', encoding='utf-8') as f:
             return [
                 line.strip() for line in f
                 if line.strip() and not line.startswith('#')
             ]
     except Exception as e:
         console.print(f"[bold red]Ошибка чтения файла {filepath}: {e}[/bold red]")
-        sys.exit(1)
+        wait_and_exit()
 
+def load_tcp_targets(filepath: str = "tcp16.json") -> List[Any]:
+    """Загружает JSON с целями для TCP теста."""
+    path = get_resource_path(filepath)
 
-def load_tcp_targets(filepath: str = "tcp16.json") -> list:
-    full_path = get_resource_path(filepath)
-
-    if not os.path.exists(full_path):
+    if not path.exists():
         console.print(f"[bold red]КРИТИЧЕСКАЯ ОШИБКА: Файл не найден![/bold red]")
-        console.print(f"[red]Путь: {full_path}[/red]")
-        sys.exit(1)
+        console.print(f"[red]Путь: {path}[/red]")
+        wait_and_exit()
 
     try:
-        with open(full_path, 'r', encoding='utf-8') as f:
+        with open(path, 'r', encoding='utf-8') as f:
             return json.load(f)
     except json.JSONDecodeError as e:
         console.print(f"[bold red]ОШИБКА: Некорректный JSON в {filepath}![/bold red]")
         console.print(f"[red]{e}[/red]")
-        sys.exit(1)
+        wait_and_exit()
+    except Exception as e:
+        console.print(f"[bold red]Ошибка чтения {filepath}: {e}[/bold red]")
+        wait_and_exit()

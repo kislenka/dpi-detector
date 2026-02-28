@@ -95,4 +95,13 @@ if os.path.exists(external_config_path) and os.path.abspath(__file__) != externa
         with open(external_config_path, 'r', encoding='utf-8') as ext_f:
             exec(ext_f.read(), globals())
     except Exception as e:
-        print(f"Ошибка при загрузке внешнего config.py: {e}")
+        print(f"[!] Ошибка при загрузке внешнего config.py: {e}")
+        print("Нажмите любую клавишу для выхода...")
+
+        try:
+            import msvcrt
+            msvcrt.getch()
+        except ImportError:
+            input()
+
+        sys.exit(1)

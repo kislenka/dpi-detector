@@ -21,7 +21,7 @@ from cli.console import console
 from cli.ui import ask_test_selection, print_legend
 from cli.runners import run_domains_test, run_tcp_test
 from core.dns_scanner import check_dns_integrity, collect_stub_ips_silently
-from utils.files import load_domains, load_tcp_targets, get_exe_dir
+from utils.files import load_domains, load_tcp_targets, get_base_dir
 
 CURRENT_VERSION = "2.0"
 GITHUB_REPO     = "Runnin4ik/dpi-detector"
@@ -168,7 +168,7 @@ async def main():
 
     if raw in ("y", "yes", "д", "да"):
         save_to_file = True
-        result_path = os.path.join(get_exe_dir(), "dpi_detector_results.txt")
+        result_path = os.path.join(get_base_dir(), "dpi_detector_results.txt")
 
     semaphore = asyncio.Semaphore(config.MAX_CONCURRENT)
     first_run = True
