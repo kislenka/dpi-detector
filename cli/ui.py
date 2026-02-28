@@ -50,9 +50,9 @@ async def ask_test_selection() -> str:
     valid = {"1", "2", "3", "12", "13", "23", "123"}
     console.print(
         "\n[bold]Какие тесты запустить?[/bold]\n"
-        "  [cyan]1[/cyan]   — DNS целостность\n"
-        "  [cyan]2[/cyan]   — Проверка доменов (TLS + HTTP injection)\n"
-        "  [cyan]3[/cyan]   — TCP 16-20KB блокировка\n"
+        "  [cyan]1[/cyan]   — Проверка подмены DNS\n"
+        "  [cyan]2[/cyan]   — Проверка доступности доменов\n"
+        "  [cyan]3[/cyan]   — Проверка TCP 16-20KB блокировки\n"
         "  [cyan]123[/cyan] — Все тесты [dim](по умолчанию)[/dim]"
     )
     loop = asyncio.get_running_loop()
@@ -60,7 +60,7 @@ async def ask_test_selection() -> str:
         raw = (await loop.run_in_executor(
             None, lambda: input("\nВведите выбор [123]: ")
         )).strip()
-    except (EOFError, KeyboardInterrupt):
+    except (EOFError, KeyboardInterrupt, asyncio.CancelledError):
         raise KeyboardInterrupt
 
     if raw == "":

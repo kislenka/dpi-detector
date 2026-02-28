@@ -221,7 +221,7 @@ async def check_dns_integrity() -> Tuple[set, int]:
                 console.print(f"[dim]• UDP сервер выбран: [green]{udp_ip} ({udp_name})[/green][/dim]")
                 break
             else:
-                console.print(f"[dim]• UDP [yellow]{udp_ip}[/yellow] недоступен. Пропуск.[/dim]")
+                console.print(f"[dim]• UDP [yellow]{udp_ip} ({udp_name})[/yellow] недоступен. Пропуск.[/dim]")
 
         if udp_probe is None:
             console.print("[red]× Все UDP DNS-серверы недоступны[/red]")
@@ -237,7 +237,7 @@ async def check_dns_integrity() -> Tuple[set, int]:
                 console.print(f"[dim]• DoH сервер выбран: [green]{doh_url} ({doh_name})[/green][/dim]\n")
                 break
             else:
-                console.print(f"[dim]• DoH [yellow]{doh_name}[/yellow] недоступен. Пропуск.[/dim]")
+                console.print(f"[dim]• DoH [yellow]{doh_url} ({doh_name})[/yellow] недоступен. Пропуск.[/dim]")
 
         if doh_probe is None:
             console.print("[red]× Все DoH-серверы недоступны[/red]")
