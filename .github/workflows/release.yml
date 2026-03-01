@@ -44,6 +44,7 @@ jobs:
             --collect-all httpx \
             --add-data "domains.txt;." \
             --add-data "tcp16.json;." \
+            --add-data "whitelist_sni.txt;." \
             --name "$EXE_NAME" \
             dpi_detector.py
 

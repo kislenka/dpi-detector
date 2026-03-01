@@ -17,6 +17,7 @@
 ## 🎯 Возможности
 
 - **TCP 16-20KB блокировка** — обнаруживает обрыв соединения к CDN и хостингам после передачи 14-34KB
+- **Подбор белых SNI для AS хостингов/CDN**
 - **Проверка доступности заблокированных сайтов** — тестирует TLS 1.2, TLS 1.3 и HTTP
 - **Проверка DNS** — выявляет перехват UDP/53, подмену IP-адресов заглушками и блокировку DoH
 - **Классификация ошибок** — различает TCP RST, Connection Abort,
@@ -30,6 +31,7 @@
 1.  `domains.txt` — список доменов для проверки.
 2.  `tcp16.json` — цели для теста TCP 16-20KB.
 3.  `config.py` — конфигурация.
+4.  `whitelist_sni.txt` — список белых SNI для подбора рабочих
 
 > [!WARNING]  
 > Если у вас запущены средства обхода блокировок (например, zapret или GoodbyeDPI), результаты тестов будут искажены. Чтобы узнать реальное состояние фильтров вашего провайдера, выключите их перед началом проверки или убедитесь, что они работают в режиме обработки всех пакетов (режим ALL), а не только по списку.
@@ -48,7 +50,7 @@ docker run --rm -it ghcr.io/runnin4ik/dpi-detector:2.0
 ```
 
 #### С кастомизацией
-Переопределите нужные файлы: `domains.txt`, `tcp16.json` или `config.py`  
+Переопределите нужные файлы: `domains.txt`, `tcp16.json`...
 Запустите с монтированием (можно монтировать один или несколько файлов)
 ```bash
 # Bash (Linux / macOS)
@@ -56,6 +58,7 @@ docker run --rm -it --pull=always \
   -v $(pwd)/domains.txt:/app/domains.txt \
   -v $(pwd)/tcp16.json:/app/tcp16.json \
   -v $(pwd)/config.py:/app/config.py \
+  -v $(pwd)/whitelist_sni.txt:/app/whitelist_sni.txt \
   ghcr.io/runnin4ik/dpi-detector:latest
 ```
 <details>
@@ -67,6 +70,7 @@ docker run --rm -it --pull=always `
   -v ${PWD}/domains.txt:/app/domains.txt `
   -v ${PWD}/tcp16.json:/app/tcp16.json `
   -v ${PWD}/config.py:/app/config.py `
+  -v ${PWD}/whitelist_sni.txt:/app/whitelist_sni.txt `
   ghcr.io/runnin4ik/dpi-detector:latest
 ```
 
@@ -76,6 +80,7 @@ docker run --rm -it --pull=always ^
   -v %cd%/domains.txt:/app/domains.txt ^
   -v %cd%/tcp16.json:/app/tcp16.json ^
   -v %cd%/config.py:/app/config.py ^
+  -v %cd%/whitelist_sni.txt:/app/whitelist_sni.txt ^
   ghcr.io/runnin4ik/dpi-detector:latest
 ```
 </details>
@@ -85,6 +90,7 @@ docker run --rm -it --pull=always ^
 
 **Установка:**
 ```bash
+# скачайте и распакуйте архив руками, или:
 git clone https://github.com/Runnin4ik/dpi-detector.git
 cd dpi-detector
 python -m pip install -r requirements.txt
@@ -99,12 +105,12 @@ python dpi_detector.py
 
 Для использования программы не обязательно устанавливать Python. Скачайте подходящий `.exe` файл в разделе [Releases -> Assets](https://github.com/Runnin4ik/dpi-detector/releases):
 
-*   **[Скачать для Windows 10 / 11](https://github.com/Runnin4ik/dpi-detector/releases/download/v2.0.0/dpi_detector_v2.0_win10.exe)**
-*   **[Скачать для Windows 7 / 8](https://github.com/Runnin4ik/dpi-detector/releases/download/v2.0.0/dpi_detector_v2.0_win7.exe)**
+*   **[Скачать для Windows 10 / 11](https://github.com/Runnin4ik/dpi-detector/releases/download/v2.0.0/dpi_detector_v2.0.0_win10.exe)**
+*   **[Скачать для Windows 7 / 8](https://github.com/Runnin4ik/dpi-detector/releases/download/v2.0.0/dpi_detector_v2.0.0_win7.exe)**
 
 #### С кастомизацией
 
-Переопределите нужные файлы: `domains.txt`, `tcp16.json` или `config.py`  
+Переопределите нужные файлы: `domains.txt`, `tcp16.json`, `config.py`, `whitelist_sni.txt`
 И положите их в папку рядом с `.exe` файлом.
 
 ## 🤝 Вклад в проект
