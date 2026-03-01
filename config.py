@@ -5,17 +5,15 @@ import sys
 """
 
 # === Основные настройки ===
-MAX_CONCURRENT = 70
+MAX_CONCURRENT = 100
 
 # === Таймауты ===
 TIMEOUT = 7.0
-TIMEOUT_TCP_16_20 = 10.0
 
 # === TCP блокировка ===
 TCP_BLOCK_MIN_KB = 1
 TCP_BLOCK_MAX_KB = 69
 FAT_DEFAULT_SNI = "example.com"
-FAT_HEADER_KB = 64
 FAT_CONNECT_TIMEOUT = 8.0
 FAT_READ_TIMEOUT = 12.0
 
