@@ -167,7 +167,6 @@ async def run_domains_test(semaphore: asyncio.Semaphore, stub_ips: set, domains:
         [_resolve_worker(d, semaphore, stub_ips) for d in domains],
         "Фаза 0/4: DNS-резолв..."
     )
-    entries.sort(key=lambda e: e["domain"])
 
     # Один клиент на фазу — SSL-контекст создаётся один раз, не на каждый домен
     client_t13v4 = create_dpi_client("TLSv1.3")
@@ -244,9 +243,6 @@ async def run_tcp_test(semaphore: asyncio.Semaphore, tcp_items: list) -> dict:
     console.print(
         f"\n[bold]Проверка TCP 16-20KB блокировки[/bold]  "
         f"[dim]Целей: {len(tcp_items)} | timeout: {config.FAT_CONNECT_TIMEOUT}s[/dim]"
-    )
-    console.print(
-        "[dim]SHORT (HEAD) → проверяем живость. FAT (GET + 64KB заголовок) → смотрим на блокировку.[/dim]\n"
     )
 
     table = Table(show_header=True, header_style="bold magenta", border_style="dim")
