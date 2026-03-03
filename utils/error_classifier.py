@@ -55,7 +55,7 @@ def clean_detail(detail: str) -> str:
     if not detail or detail in ("OK", "Error"):
         return ""
     detail = detail.replace("The operation did not complete", "TLS Aborted")
-    detail = re.sub(r"\s*\([^)]*\)?\s*", " ", detail)
+    #detail = re.sub(r"\s*\([^)]*\)?\s*", " ", detail)
     detail = re.sub(r"\s*\(_*\s*$", "", detail)
     detail = re.sub(r"\s+", " ", detail).strip()
     detail = detail.replace("Err None: ", "").replace("Conn failed: ", "")
@@ -149,9 +149,16 @@ def classify_ssl_error(error: ssl.SSLError, bytes_read: int) -> Tuple[str, str, 
     return ("[red]SSL ERR[/red]", clean_detail(str(error)[:40]), bytes_read)
 
 
-def classify_connect_error(error: httpx.ConnectError, bytes_read: int) -> Tuple[str, str, int]:
+def classify_connect_error(error: Exception, bytes_read: int) -> Tuple[str, str, int]:
+    """Единая классификация ошибок установки соединения (L3/L4/DNS)."""
     full_text = collect_error_text(error)
     err_errno = get_errno_from_chain(error)
+
+    if isinstance(error, httpx.PoolTimeout) or "pool timeout" in full_text:
+        return ("[magenta]SYS OVERLOAD[/magenta]", "Нехватка сокетов (Pool Timeout)", bytes_read)
+
+    if isinstance(error, httpx.ConnectTimeout) or "connect timeout" in full_text:
+        return ("[red]TCP TIMEOUT[/red]", "Таймаут (SYN Drop)", bytes_read)
 
     # DNS
     gai = find_cause(error, socket.gaierror)
@@ -172,9 +179,8 @@ def classify_connect_error(error: httpx.ConnectError, bytes_read: int) -> Tuple[
     ]):
         return ("[yellow]DNS FAIL[/yellow]", "Ошибка DNS", bytes_read)
 
-    # TLS alert внутри ConnectError (DPI)
-    if "sslv3_alert" in full_text or "ssl alert" in full_text or \
-            ("alert" in full_text and "handshake" in full_text):
+    # TLS ALERT внутри ConnectError (DPI)
+    if "sslv3_alert" in full_text or "ssl alert" in full_text or ("alert" in full_text and "handshake" in full_text):
         if "handshake_failure" in full_text or "handshake failure" in full_text:
             return ("[bold red]TLS DPI[/bold red]", "Handshake alert", bytes_read)
         elif "unrecognized_name" in full_text:
@@ -184,37 +190,31 @@ def classify_connect_error(error: httpx.ConnectError, bytes_read: int) -> Tuple[
         else:
             return ("[bold red]TLS DPI[/bold red]", "TLS alert", bytes_read)
 
-    if find_cause(error, ConnectionRefusedError) is not None \
-            or err_errno in (errno.ECONNREFUSED, config.WSAECONNREFUSED) \
-            or "refused" in full_text:
-        return ("[bold red]REFUSED[/bold red]", "Порт закрыт/RST", bytes_read)
-
-    if find_cause(error, ConnectionResetError) is not None \
-            or err_errno in (errno.ECONNRESET, config.WSAECONNRESET) \
-            or "connection reset" in full_text:
-        return ("[bold red]TCP RST[/bold red]", "RST при handshake", bytes_read)
-
-    if find_cause(error, ConnectionAbortedError) is not None \
-            or err_errno in (getattr(errno, 'ECONNABORTED', 103), config.WSAECONNABORTED) \
-            or "connection aborted" in full_text:
-        return ("[bold red]TCP ABORT[/bold red]", "Соединение прервано", bytes_read)
-
-    if find_cause(error, TimeoutError) is not None \
-            or err_errno in (errno.ETIMEDOUT, config.WSAETIMEDOUT) \
-            or "timed out" in full_text:
-        return ("[red]TIMEOUT[/red]", "Таймаут handshake", bytes_read)
-
-    if err_errno in (errno.ENETUNREACH, config.WSAENETUNREACH) or "network is unreachable" in full_text:
-        return ("[red]NET UNREACH[/red]", "Сеть недоступна", bytes_read)
-    if err_errno in (errno.EHOSTUNREACH, config.WSAEHOSTUNREACH) or "no route to host" in full_text:
-        return ("[red]HOST UNREACH[/red]", "Хост недоступен", bytes_read)
-
     ssl_err = find_cause(error, ssl.SSLError)
     if ssl_err is not None:
         return classify_ssl_error(ssl_err, bytes_read)
 
+    # TCP ОШИБКИ (L4)
+    if find_cause(error, ConnectionRefusedError) is not None or err_errno in (errno.ECONNREFUSED, config.WSAECONNREFUSED) or "refused" in full_text:
+        return ("[bold red]TCP REFUSED[/bold red]", "Порт закрыт / Active RST", bytes_read)
+
+    if find_cause(error, ConnectionResetError) is not None or err_errno in (errno.ECONNRESET, config.WSAECONNRESET) or "connection reset" in full_text:
+        return ("[bold red]TCP RST[/bold red]", "RST при handshake", bytes_read)
+
+    if find_cause(error, ConnectionAbortedError) is not None or err_errno in (getattr(errno, 'ECONNABORTED', 103), config.WSAECONNABORTED) or "connection aborted" in full_text:
+        return ("[bold red]TCP ABORT[/bold red]", "Соединение прервано", bytes_read)
+
+    if find_cause(error, TimeoutError) is not None or err_errno in (errno.ETIMEDOUT, config.WSAETIMEDOUT) or "timed out" in full_text:
+        return ("[red]TCP TIMEOUT[/red]", "Таймаут (SYN Drop)", bytes_read)
+
+    if err_errno in (errno.ENETUNREACH, config.WSAENETUNREACH) or "network is unreachable" in full_text:
+        return ("[red]NET UNREACH[/red]", "Сеть недоступна", bytes_read)
+
+    if err_errno in (errno.EHOSTUNREACH, config.WSAEHOSTUNREACH) or "no route to host" in full_text:
+        return ("[red]HOST UNREACH[/red]", "Хост недоступен", bytes_read)
+
     if "all connection attempts failed" in full_text:
-        return ("[bold red]CONN FAIL[/bold red]", "Все попытки провалились", bytes_read)
+        return ("[bold red]TCP FAIL[/bold red]", "Все IP недоступны", bytes_read)
 
     return ("[red]CONN ERR[/red]", clean_detail(str(error)[:40]), bytes_read)
 

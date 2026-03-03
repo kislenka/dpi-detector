@@ -8,7 +8,10 @@ import sys
 MAX_CONCURRENT = 100
 
 # === Таймауты ===
-TIMEOUT = 7.0
+CONNECT_TIMEOUT = 8.0
+READ_TIMEOUT = 8.0
+POOL_TIMEOUT = 2.0 # таймаут на ожидание свободного сокета
+STUB_IPS_TIMEOUT = 5.0
 
 # === TCP блокировка ===
 TCP_BLOCK_MIN_KB = 1

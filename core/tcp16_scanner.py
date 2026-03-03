@@ -7,6 +7,7 @@ import time
 from typing import Tuple, Optional
 import httpx
 import config
+from utils.error_classifier import classify_connect_error, classify_read_error
 
 # Предварительно генерируем пул случайных символов (100 КБ).
 RANDOM_POOL = "".join(random.choices(string.ascii_letters + string.digits, k=100_000))
@@ -54,13 +55,19 @@ async def _fat_probe_keepalive(
             start_idx = random.randint(0, len(RANDOM_POOL) - chunk_size - 1)
             headers["X-Pad"] = RANDOM_POOL[start_idx:start_idx + chunk_size]
 
-        current_timeout = dynamic_timeout if dynamic_timeout is not None else config.FAT_READ_TIMEOUT
+        timeout_read = dynamic_timeout if dynamic_timeout is not None else config.FAT_READ_TIMEOUT
+        custom_timeout = httpx.Timeout(
+            timeout_read,
+            connect=config.FAT_CONNECT_TIMEOUT,
+            pool=config.POOL_TIMEOUT
+        )
+
         start_time = time.time()
 
         try:
             resp = await client.request(
                 "HEAD", url, headers=headers,
-                timeout=current_timeout,
+                timeout=custom_timeout,
                 extensions=extensions if extensions else None
             )
 
@@ -80,37 +87,23 @@ async def _fat_probe_keepalive(
             await asyncio.sleep(0.05)
 
         except (httpx.ConnectTimeout, httpx.ConnectError) as e:
+            label, detail, _ = classify_connect_error(e, 0)
             if i == 0:
-                if "refused" in str(e).lower() or "10061" in str(e):
-                    return "[red]Нет[/red]", "[red]REFUSED[/red]", "Refused"
-                return "[red]Нет[/red]", "[red]CONN ERR[/red]", "Connect Error"
-            return alive_str, "[bold red]DETECTED[/bold red]", f"Conn Err at {i*4}KB"
+                return "[red]Нет[/red]", label, detail
+            return alive_str, "[bold red]DETECTED[/bold red]", f"{detail} at {i*4}KB"
 
-        except (httpx.ReadTimeout, httpx.WriteTimeout):
+        except (httpx.ReadTimeout, httpx.WriteTimeout) as e:
+            err_type = "Read Timeout" if isinstance(e, httpx.ReadTimeout) else "Write Timeout"
             if i == 0:
-                return "[red]Нет[/red]", "[red]ERR[/red]", "Timeout"
-            return alive_str, "[bold red]DETECTED[/bold red]", f"Blackhole at {i*4}KB"
-
-        except (httpx.ReadError, httpx.WriteError, httpx.RemoteProtocolError) as e:
-            if i == 0:
-                return "[red]Нет[/red]", "[red]ERR[/red]", type(e).__name__
-
-            err_str = str(e).lower()
-            if "reset" in err_str or "10054" in err_str:
-                tag = "TCP RST"
-            elif "abort" in err_str or "10053" in err_str:
-                tag = "TCP ABORT"
-            elif "eof" in err_str or "closed" in err_str:
-                tag = "TCP FIN"
-            else:
-                tag = "Drop"
-
-            return alive_str, "[bold red]DETECTED[/bold red]", f"{tag} at {i*4}KB"
+                return "[green]Да[/green]", f"[red]{err_type.upper()}[/red]", err_type
+            return alive_str, "[bold red]DETECTED[/bold red]", f"{err_type} at {i*4}KB"
 
         except Exception as e:
+            # Для ReadError, WriteError, RemoteProtocolError и любых других
+            label, detail, _ = classify_read_error(e, 0)
             if i == 0:
-                return "[red]Нет[/red]", "[red]ERR[/red]", f"{type(e).__name__}"
-            return alive_str, "[red]ERR[/red]", f"{type(e).__name__} at {i*4}KB"
+                return "[green]Да[/green]", label, detail
+            return alive_str, "[bold red]DETECTED[/bold red]", f"{detail} at {i*4}KB"
 
     return alive_str, "[green]OK[/green]", ""
 

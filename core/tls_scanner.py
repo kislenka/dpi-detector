@@ -40,9 +40,15 @@ def create_dpi_client(tls_version: str = None, ipv6: bool = False) -> httpx.Asyn
     limits = httpx.Limits(max_keepalive_connections=0, max_connections=config.MAX_CONCURRENT)
     transport = httpx.AsyncHTTPTransport(verify=ctx, http2=False, retries=0, limits=limits)
 
+    custom_timeout = httpx.Timeout(
+        config.READ_TIMEOUT,
+        connect=config.CONNECT_TIMEOUT,
+        pool=config.POOL_TIMEOUT
+    )
+
     return httpx.AsyncClient(
         transport=transport,
-        timeout=config.TIMEOUT,
+        timeout=custom_timeout,
         follow_redirects=False,
     )
 
@@ -148,10 +154,7 @@ async def _check_tls_single(
             else:
                 return ("[green]OK[/green]", f"HTTP {status_code}", bytes_read, elapsed)
 
-        except httpx.ConnectTimeout:
-            return ("[red]TIMEOUT[/red]", "Таймаут handshake", bytes_read, time.time() - start)
-
-        except httpx.ConnectError as e:
+        except (httpx.ConnectTimeout, httpx.ConnectError) as e:
             label, detail, br = classify_connect_error(e, bytes_read)
             return (label, detail, br, time.time() - start)
 
@@ -252,67 +255,14 @@ async def check_http_injection(
         await response.aclose()
         return ("[green]OK[/green]", f"{status_code}")
 
-    except httpx.ConnectTimeout:
-        return ("[red]TIMEOUT[/red]", "Connect timeout")
-    except httpx.ReadTimeout:
-        return ("[red]TIMEOUT[/red]", "Read timeout")
-    except httpx.WriteTimeout:
-        return ("[red]TIMEOUT[/red]", "Write timeout")
-    except httpx.PoolTimeout:
-        return ("[red]TIMEOUT[/red]", "Pool timeout")
+    except (httpx.ConnectTimeout, httpx.ConnectError) as e:
+            label, detail, _ = classify_connect_error(e, 0)
+            return (label, detail)
 
-    except httpx.ConnectError as e:
-        full_text = collect_error_text(e)
-        if find_cause(e, socket.gaierror) is not None \
-                or any(x in full_text for x in ["getaddrinfo", "name resolution"]):
-            return ("[yellow]DNS FAIL[/yellow]", "DNS error")
-        if find_cause(e, ConnectionRefusedError) is not None or "refused" in full_text:
-            return ("[bold red]REFUSED[/bold red]", "Refused")
-        if find_cause(e, ConnectionResetError) is not None or "reset" in full_text:
-            return ("[red]TCP RST[/red]", "RST")
-        if find_cause(e, TimeoutError) is not None or "timed out" in full_text:
-            return ("[red]TIMEOUT[/red]", "Timeout")
-        return ("[red]CONN ERR[/red]", "Conn error")
+    except (httpx.ReadTimeout, httpx.WriteTimeout, httpx.PoolTimeout) as e:
+        err_type = type(e).__name__.replace("Timeout", "").upper() + " TIMEOUT"
+        return (f"[red]{err_type}[/red]", "Timeout")
 
-    except httpx.ReadError as e:
-        full_text = collect_error_text(e)
-        err_errno = get_errno_from_chain(e)
-        if find_cause(e, ConnectionResetError) is not None \
-                or err_errno in (errno.ECONNRESET, config.WSAECONNRESET) \
-                or "connection reset" in full_text:
-            return ("[red]TCP RST[/red]", "RST on read")
-        if find_cause(e, ConnectionAbortedError) is not None \
-                or err_errno in (getattr(errno, 'ECONNABORTED', 103), config.WSAECONNABORTED):
-            return ("[red]TCP ABORT[/red]", "Abort on read")
-        return ("[red]READ ERR[/red]", "Read error")
-
-    except httpx.RemoteProtocolError as e:
-        full_text = collect_error_text(e)
-        if "peer closed" in full_text or "connection closed" in full_text:
-            return ("[red]TCP RST[/red]", "Peer closed")
-        return ("[red]PROTO ERR[/red]", "Protocol error")
-
-    except httpx.TimeoutException:
-        return ("[red]TIMEOUT[/red]", "Timeout")
-
-    except OSError as e:
-        en = e.errno
-        if en in (errno.ECONNRESET, config.WSAECONNRESET):
-            return ("[red]TCP RST[/red]", "OS conn reset")
-        if en in (errno.ECONNREFUSED, config.WSAECONNREFUSED):
-            return ("[bold red]REFUSED[/bold red]", "OS conn refused")
-        if en in (errno.ETIMEDOUT, config.WSAETIMEDOUT):
-            return ("[red]TIMEOUT[/red]", "OS timeout")
-        if en in (errno.ENETUNREACH, config.WSAENETUNREACH):
-            return ("[red]NET UNREACH[/red]", "Network unreachable")
-        return ("[red]OS ERR[/red]", f"errno={en}")
-
-    except Exception as e:
-        full_text = collect_error_text(e)
-        if "timeout" in full_text or "timed out" in full_text:
-            return ("[red]TIMEOUT[/red]", "Timeout")
-        if "reset" in full_text:
-            return ("[red]TCP RST[/red]", "RST")
-        if "refused" in full_text:
-            return ("[bold red]REFUSED[/bold red]", "Refused")
-        return ("[red]HTTP ERR[/red]", f"{type(e).__name__}")
+    except (httpx.ReadError, httpx.RemoteProtocolError, Exception) as e:
+        label, detail, _ = classify_read_error(e, 0)
+        return (label, detail)

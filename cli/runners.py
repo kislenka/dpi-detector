@@ -142,7 +142,7 @@ async def run_domains_test(semaphore: asyncio.Semaphore, stub_ips: set, domains:
     """Тест 2: TLS1.3 IPv4 → TLS1.2 → HTTP injection."""
     console.print(
         f"\n[bold]Проверка доступности доменов[/bold]  "
-        f"[dim]Целей: {len(domains)} | timeout: {config.TIMEOUT}s[/dim]\n"
+        f"[dim]Целей: {len(domains)} | timeout: {config.CONNECT_TIMEOUT}s[/dim]\n"
     )
 
     table = Table(show_header=True, header_style="bold magenta", border_style="dim")
