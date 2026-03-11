@@ -115,7 +115,6 @@
     {"id": "VLT-02", "asn": "20473", "provider": "Vultr", "ip": "64.176.188.124", "port": 443, "sni": ""},
     {"id": "VLT-03", "asn": "20473", "provider": "Vultr", "ip": "108.61.167.59", "port": 443, "sni": ""},
     {"id": "VLT-04", "asn": "20473", "provider": "Vultr", "ip": "173.199.115.182", "port": 443, "sni": ""},
-    {"id": "VLT-05", "asn": "20473", "provider": "Vultr HTTP", "ip": "108.61.197.203", "port": 80, "sni": ""},
 
     {"id": "MBC-01", "asn": "8849", "provider": "Melbicom 1", "ip": "193.35.224.194", "port": 443},
     {"id": "MBC-03", "asn": "56630", "provider": "Melbicom 2", "ip": "185.6.14.1", "port": 443},
