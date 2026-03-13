@@ -196,6 +196,30 @@ async def main():
     run_domains = "2" in selection
     run_tcp     = "3" in selection
     run_wl_sni  = "4" in selection
+    show_legend = "5" in selection
+
+    if show_legend and not any([run_dns, run_domains, run_tcp, run_wl_sni]):
+        print_legend()
+        if args.batch:
+            break
+        console.print(
+            "\nНажмите [bold green]Enter[/bold green] для возврата в меню "
+            "или [bold red]Ctrl+C[/bold red] для выхода"
+        )
+        _flush_stdin()
+        try:
+            await _readline_cancelable()
+        except KeyboardInterrupt:
+            raise
+        # Повторно спрашиваем выбор
+        if not args.batch:
+            selection = await ask_test_selection()
+            run_dns     = "1" in selection
+            run_domains = "2" in selection
+            run_tcp     = "3" in selection
+            run_wl_sni  = "4" in selection
+            show_legend = "5" in selection
+        console.print()
 
     save_to_file = False
     result_path  = None
@@ -219,6 +243,8 @@ async def main():
 
     while True:
         # ── DNS ───────────────────────────────────────────────────────────────
+        if not any([run_dns, run_domains, run_tcp, run_wl_sni]):
+            break
         stub_ips: set = set()
         dns_intercept_count = 0
         doh_unavailable = False

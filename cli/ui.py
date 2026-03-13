@@ -44,7 +44,7 @@ def build_domain_row(entry: dict) -> list:
 
 
 async def ask_test_selection() -> str:
-    valid = {"1", "2", "3", "4", "12", "13", "14", "23", "24", "34",
+    valid = {"1", "2", "3", "4", "5", "12", "13", "14", "23", "24", "34",
              "123", "124", "134", "234", "1234"}
     console.print(
         "\n[bold]Какие тесты запустить?[/bold]\n"
@@ -52,6 +52,7 @@ async def ask_test_selection() -> str:
         "  [cyan]2[/cyan]    — Проверка доступности доменов\n"
         "  [cyan]3[/cyan]    — Проверка TCP 16-20KB блокировки\n"
         "  [cyan]4[/cyan]    — Поиск белых SNI для ASN\n"
+        "  [cyan]5[/cyan]    — Легенда статусов\n"
         "  [cyan]123[/cyan] — [dim](по умолчанию)[/dim]"
     )
     loop = asyncio.get_running_loop()
@@ -72,19 +73,49 @@ async def ask_test_selection() -> str:
 
 
 def print_legend() -> None:
-    console.print("\n[bold]Легенда статусов:[/bold]")
-    legend = [
-        ("TLS DPI",    "DPI манипулирует или обрывает TLS соединение"),
-        ("UNSUPP",     "Сервер не поддерживает TLS 1.3 (не блокировка)"),
-        ("TLS MITM",   "Man-in-the-Middle: подмена/проблемы с сертификатом"),
-        ("TLS BLOCK",  "Блокировка версии TLS или протокола"),
-        ("SSL ERR",    "SSL/TLS ошибка (часто проблемы совместимости CDN/сервера)"),
-        ("ISP PAGE",   "Запрос идёт на IP-заглушку провайдера (DNS подмена)"),
-        ("BLOCKED",    "HTTP 451 (Недоступно по юридическим причинам)"),
-        ("REDIR",      "[green]Зелёный[/green] = редирект на тот же домен/поддомен  [red]Красный[/red] = редирект на чужой домен"),
-        ("TIMEOUT",    "Таймаут соединения или чтения"),
-        ("DNS FAIL",   "Не удалось разрешить доменное имя"),
-        ("OK",         "Сайт доступен"),
+    console.print("\n[bold]Легенда статусов:[/bold]\n")
+
+    sections = [
+        ("[bold cyan]— TLS / DPI —[/bold cyan]", [
+            ("TLS DPI",     "DPI обрывает или манипулирует TLS: EOF, bad record, handshake abort"),
+            ("TLS MITM",    "Man-in-the-Middle: подменён сертификат (Unknown CA, Cert expired, Hostname mismatch)"),
+            ("TLS BLOCK",   "Блокировка версии TLS или протокола целиком (protocol_version alert)"),
+            ("SSL ERR",     "Прочие SSL ошибки: bad key share, record layer fail, internal error"),
+        ]),
+        ("[bold cyan]— TCP / Соединение —[/bold cyan]", [
+            ("TCP RST",     "Соединение сброшено (TCP RST пакет от DPI или сервера)"),
+            ("ABORT",       "Соединение прервано (ConnectionAborted / BrokenPipe)"),
+            ("REFUSED",     "TCP соединение отклонено (ECONNREFUSED)"),
+            ("TIMEOUT",     "Таймаут: SYN Drop, Read timeout или OS timeout"),
+            ("NET UNREACH", "Нет маршрута до сети (ICMP unreachable)"),
+            ("HOST UNREACH","Нет маршрута до хоста"),
+            ("OS ERR",      "Прочие OS-ошибки (errno)"),
+        ]),
+        ("[bold cyan]— DNS —[/bold cyan]", [
+            ("DNS FAIL",    "Домен не разрешился через системный резолвер"),
+            ("DNS FAKE",    "IP домена совпадает с известной заглушкой провайдера"),
+        ]),
+        ("[bold cyan]— HTTP / Блокировки —[/bold cyan]", [
+            ("BLOCKED",     "HTTP 451 — Недоступно по юридическим причинам"),
+            ("ISP PAGE",    "Resolved IP является заглушкой провайдера (DNS подмена)"),
+            ("REDIR",       "[green]Зелёный[/green] — редирект на тот же домен/поддомен (норма)  "
+                            "[red]Красный[/red] — редирект на чужой домен (подозрительно)"),
+        ]),
+        ("[bold cyan]— TCP 16-20KB тест —[/bold cyan]", [
+            ("DETECTED",    "Обрыв соединения после отправки 16–20KB (FAT header блокировка)"),
+            ("OK",          "Все 16 запросов прошли без обрыва"),
+        ]),
+        ("[bold cyan]— Прочее —[/bold cyan]", [
+            ("OK",          "Сайт доступен (200–4xx без признаков блокировки)"),
+            ("PROTO ERR",   "Нарушение HTTP-протокола со стороны сервера/DPI"),
+            ("READ ERR",    "Ошибка чтения данных"),
+            ("CONN ERR",    "Неклассифицированная ошибка подключения"),
+            ("POOL TIMEOUT","Исчерпан пул сокетов — снизьте MAX_CONCURRENT"),
+        ]),
     ]
-    for term, desc in legend:
-        console.print(f"[dim]• [cyan]{term:<12}[/cyan] = {desc}[/dim]")
+
+    for section_title, items in sections:
+        console.print(f"  {section_title}")
+        for term, desc in items:
+            console.print(f"  [dim]  [cyan]{term:<14}[/cyan] {desc}[/dim]")
+        console.print()
