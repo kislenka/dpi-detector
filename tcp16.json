@@ -16,7 +16,6 @@
     {"id": "CF-05", "asn": "13335", "provider": "Cloudflare", "ip": "104.18.46.6", "port": 443},
     {"id": "CF-06", "asn": "13335", "provider": "Cloudflare", "ip": "104.16.59.56", "port": 443},
 
-    {"id": "CDN-01", "asn": "60068", "provider": "CDN77 #1", "ip": "79.127.240.1", "port": 443},
     {"id": "CDN-02", "asn": "60068", "provider": "CDN77 #1", "ip": "89.187.169.9", "port": 443},
     {"id": "CDN-03", "asn": "60068", "provider": "CDN77 #1", "ip": "169.150.239.5", "port": 443},
     {"id": "CDN-04", "asn": "60068", "provider": "CDN77 #1 HTTP", "ip": "84.17.50.100", "port": 80},
