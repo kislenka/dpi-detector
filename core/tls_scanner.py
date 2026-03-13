@@ -38,7 +38,15 @@ def create_dpi_client(tls_version: str = None, ipv6: bool = False) -> httpx.Asyn
         ctx.maximum_version = ssl.TLSVersion.TLSv1_3
 
     limits = httpx.Limits(max_keepalive_connections=0, max_connections=config.MAX_CONCURRENT)
-    transport = httpx.AsyncHTTPTransport(verify=ctx, http2=False, retries=0, limits=limits)
+    proxy_url = getattr(config, "PROXY_URL", None)
+
+    transport = httpx.AsyncHTTPTransport(
+        verify=ctx,
+        http2=False,
+        retries=0,
+        limits=limits,
+        proxy=proxy_url
+    )
 
     custom_timeout = httpx.Timeout(
         config.READ_TIMEOUT,
@@ -50,6 +58,7 @@ def create_dpi_client(tls_version: str = None, ipv6: bool = False) -> httpx.Asyn
         transport=transport,
         timeout=custom_timeout,
         follow_redirects=False,
+        trust_env=False
     )
 
 

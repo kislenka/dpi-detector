@@ -35,7 +35,7 @@ async def _fetch_latest_version() -> Optional[str]:
     """Запрашивает последний тег с GitHub API. Возвращает строку версии или None."""
     url = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
     try:
-        async with httpx.AsyncClient(timeout=3.0) as client:
+        async with httpx.AsyncClient(timeout=3.0, proxy=proxy_url, trust_env=False) as client:
             resp = await client.get(url, headers={"Accept": "application/vnd.github+json"})
             if resp.status_code == 200:
                 tag = resp.json().get("tag_name", "")

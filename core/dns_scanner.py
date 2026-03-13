@@ -121,7 +121,14 @@ async def _probe_doh_single(doh_url: str, domain: str) -> Optional[List[str]]:
     """Резолвит один домен через DoH. Возвращает список IP или None при ошибке."""
     headers = {"Accept": "application/dns-json", "User-Agent": config.USER_AGENT}
     try:
-        async with httpx.AsyncClient(timeout=config.DNS_CHECK_TIMEOUT, verify=False, headers=headers) as client:
+        proxy_url = getattr(config, "PROXY_URL", None)
+        async with httpx.AsyncClient(
+            timeout=config.DNS_CHECK_TIMEOUT,
+            verify=False,
+            headers=headers,
+            proxy=proxy_url,
+            trust_env=False
+        ) as client:
             resp = await client.get(doh_url, params={"name": domain, "type": "A"})
             if resp.status_code != 200:
                 return None
@@ -182,7 +189,14 @@ async def _probe_doh_all(doh_url: str, domains: list) -> dict:
         except Exception:
             return domain, "BLOCKED", None
 
-    async with httpx.AsyncClient(timeout=config.DNS_CHECK_TIMEOUT, verify=False, headers=headers) as client:
+    proxy_url = getattr(config, "PROXY_URL", None)
+    async with httpx.AsyncClient(
+        timeout=config.DNS_CHECK_TIMEOUT,
+        verify=False,
+        headers=headers,
+        proxy=proxy_url,
+        trust_env=False
+    ) as client:
         completed = await asyncio.gather(*[_query(client, d) for d in domains])
 
     ok = timeout_cnt = blocked = 0

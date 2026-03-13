@@ -121,7 +121,15 @@ async def check_tcp_16_20(
         # переиспользовать один и тот же сокет для всех запросов к одному IP
         limits = httpx.Limits(max_keepalive_connections=1, max_connections=1)
 
-        async with httpx.AsyncClient(verify=verify_ctx, http2=False, limits=limits) as client:
+        proxy_url = getattr(config, "PROXY_URL", None)
+
+        async with httpx.AsyncClient(
+            verify=verify_ctx,
+            http2=False,
+            limits=limits,
+            proxy=proxy_url,
+            trust_env=False
+        ) as client:
             return await _fat_probe_keepalive(client, ip, port, sni, hint_rtt=hint_rtt)
 
 
@@ -143,7 +151,15 @@ async def check_tcp_16_20_with_rtt(
         rtt_samples = []
         original_sleep = asyncio.sleep
 
-        async with httpx.AsyncClient(verify=verify_ctx, http2=False, limits=limits) as client:
+        proxy_url = getattr(config, "PROXY_URL", None)
+
+        async with httpx.AsyncClient(
+            verify=verify_ctx,
+            http2=False,
+            limits=limits,
+            proxy=proxy_url,
+            trust_env=False
+        ) as client:
             scheme = "http" if port == 80 else "https"
             url = f"{scheme}://{ip}:{port}/"
             base_headers = {"User-Agent": config.USER_AGENT, "Connection": "keep-alive"}
