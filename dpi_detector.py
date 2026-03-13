@@ -196,6 +196,12 @@ async def main():
     run_domains = "2" in selection
     run_tcp     = "3" in selection
     run_wl_sni  = "4" in selection
+    run_legend  = "5" in selection
+    only_legend = run_legend and not any([run_dns, run_domains, run_tcp, run_wl_sni])
+
+    if only_legend:
+        print_legend()
+        return
 
     save_to_file = False
     result_path  = None
