@@ -44,17 +44,22 @@ def build_domain_row(entry: dict) -> list:
 
 
 async def ask_test_selection() -> str:
-    valid = {"1", "2", "3", "4", "5",
-             "12", "13", "14", "15", "23", "24", "25", "34", "35", "45",
-             "123", "124", "125", "134", "135", "145", "234", "235", "245", "345",
-             "1234", "1235", "1245", "1345", "2345", "12345"}
+    # Алгоритмически строим все непустые подмножества цифр 1–6
+    from itertools import combinations
+    digits = "123456"
+    valid = {
+        "".join(sorted(combo))
+        for r in range(1, len(digits) + 1)
+        for combo in combinations(digits, r)
+    }
     console.print(
         "\n[bold]Какие тесты запустить?[/bold]\n"
         "  [cyan]1[/cyan]    — Проверка подмены DNS\n"
         "  [cyan]2[/cyan]    — Проверка доступности доменов\n"
         "  [cyan]3[/cyan]    — Проверка TCP 16-20KB блокировки\n"
         "  [cyan]4[/cyan]    — Поиск белых SNI для ASN\n"
-        "  [cyan]5[/cyan]    — Легенда статусов\n"
+        "  [cyan]5[/cyan]    — Проверка Telegram (замедление/блокировка)\n"
+        "  [cyan]6[/cyan]    — Легенда статусов\n"
         "  [cyan]123[/cyan] — [dim](по умолчанию)[/dim]"
     )
     loop = asyncio.get_running_loop()

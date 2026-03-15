@@ -13,6 +13,7 @@ from cli.console import console
 from cli.ui import clean_hostname, build_domain_row
 from core.tls_scanner import check_domain_tls, check_http_injection, create_dpi_client
 from core.tcp16_scanner import check_tcp_16_20, check_tcp_16_20_with_rtt
+from core.telegram_scanner import run_telegram_test as _run_telegram_test
 from utils.network import get_resolved_ip
 
 
@@ -496,3 +497,9 @@ async def run_whitelist_sni_test(semaphore: asyncio.Semaphore, tcp_items: list, 
         console.print(
             f"[yellow]Белые SNI не найдены ни для одной из {len(detected_rows)} заблокированных AS[/yellow]"
         )
+
+# ── Тест 5: Telegram ──────────────────────────────────────────────────────────
+
+async def run_telegram_test(semaphore: asyncio.Semaphore) -> dict:
+    from core.telegram_scanner import run_telegram_test as _run_scanner
+    return await _run_scanner(semaphore)

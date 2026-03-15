@@ -1,4 +1,5 @@
 from typing import Optional, List, Dict
+from core.telegram_scanner import _fmt_speed as _tg_fmt, _fmt_size as _tg_size
 import asyncio
 import os
 import sys
@@ -20,7 +21,7 @@ except ImportError as e:
 from utils import config
 from cli.console import console
 from cli.ui import ask_test_selection, print_legend
-from cli.runners import run_domains_test, run_tcp_test, run_whitelist_sni_test
+from cli.runners import run_domains_test, run_tcp_test, run_whitelist_sni_test, run_telegram_test
 from core.dns_scanner import check_dns_integrity, collect_stub_ips_silently
 from utils.files import load_domains, load_tcp_targets, load_whitelist_sni, get_base_dir
 
@@ -93,8 +94,9 @@ def _flush_stdin() -> None:
 
 
 def _format_summary(
-    run_dns: bool, run_domains: bool, run_tcp: bool,
+    run_dns: bool, run_domains: bool, run_tcp: bool, run_telegram: bool,
     dns_intercept: int, domain_stats, tcp_stats,
+    telegram_stats=None,
     doh_unavailable=False,
 ) -> List[str]:
     lines = []
@@ -148,6 +150,43 @@ def _format_summary(
         )
         lines.append(line)
 
+    if run_telegram and telegram_stats:
+        t = telegram_stats
+        dl_data = t.get("download", {})
+        ul_data = t.get("upload", {})
+        dc_r, dc_t = t.get("dc_reachable", 0), t.get("dc_total", 0)
+
+        def format_tg_line(label, data, speed_key, size_key):
+            st = data.get("status")
+            avg = data.get(speed_key, 0)
+            size = data.get(size_key, 0)
+            drop = data.get("drop_at_sec")
+
+            if st == "ok":
+                raw_st, color = "ОК", "green"
+            elif st == "stalled":
+                raw_st, color = "ЗАМЕДЛЕНИЕ+ОБРЫВ", "yellow"
+            elif st == "slow":
+                raw_st, color = "ЗАМЕДЛЕНИЕ", "yellow"
+            elif st == "blocked":
+                raw_st, color = "НЕДОСТУПНО", "red"
+            else:
+                raw_st, color = "ОШИБКА", "red"
+
+            status_text = f"[{color}]{raw_st:<16}[/{color}]"
+
+            metrics = f"ср. {_tg_fmt(avg)}, {_tg_size(size)}"
+            if drop:
+                metrics += f", обрыв на {drop}с"
+
+            return f"[bold]{label:<13}[/bold] {status_text} {metrics}"
+
+        lines.append(format_tg_line("TG Скачивание", dl_data, "avg_bps", "bytes_total"))
+        lines.append(format_tg_line("TG Загрузка", ul_data, "bps", "sent"))
+
+        dc_color = "green" if dc_r == dc_t else ("red" if dc_r == 0 else "yellow")
+        lines.append(f"[bold]{'TG Датацентры':<13}[/bold] [{dc_color}]ОК {dc_r}/{dc_t}[/{dc_color}]")
+
     return lines
 
 
@@ -196,11 +235,17 @@ async def main():
     run_domains = "2" in selection
     run_tcp     = "3" in selection
     run_wl_sni  = "4" in selection
-    run_legend  = "5" in selection
-    only_legend = run_legend and not any([run_dns, run_domains, run_tcp, run_wl_sni])
+    run_telegram = "5" in selection
+    run_legend  = "6" in selection
+    only_legend = run_legend and not any([run_dns, run_domains, run_tcp, run_wl_sni, run_telegram])
 
     if only_legend:
         print_legend()
+        try:
+            console.print("\nНажмите [bold green]Enter[/bold green] для выхода...")
+            await _readline_cancelable()
+        except KeyboardInterrupt:
+            pass
         return
 
     save_to_file = False
@@ -256,12 +301,18 @@ async def main():
             else:
                 console.print("[yellow]Файл whitelist_sni.txt пуст или не найден — тест 4 пропущен.[/yellow]")
 
+
+        # ── Telegram ──────────────────────────────────────────────────────────
+        telegram_stats = None
+        if run_telegram:
+            telegram_stats = await run_telegram_test(semaphore)
         # ── Итоговая сводка ───────────────────────────────────────────────────
-        active_tests = sum([run_dns, run_domains, run_tcp, run_wl_sni])
+        active_tests = sum([run_dns, run_domains, run_tcp, run_wl_sni, run_telegram])
         console.print()
         summary_lines = _format_summary(
-            run_dns, run_domains, run_tcp,
+            run_dns, run_domains, run_tcp, run_telegram,
             dns_intercept_count, domain_stats, tcp_stats,
+            telegram_stats=telegram_stats,
             doh_unavailable=doh_unavailable,
         )
         console.print(Panel(
