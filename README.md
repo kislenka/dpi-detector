@@ -1,194 +1,150 @@
-<p align="center">
-  <img src="https://raw.githubusercontent.com/Runnin4ik/dpi-detector/main/images/logo.jpg" width="100%">
-  <br>
-  <i>«Маяк у гаснущего горизонта свободного интернета»</i><br>
-  Сквозь цифровые сумерки. Смотритель маяка, <a href="https://github.com/Runnin4ik"><b>Runni</b></a>
-</p>
+# DPI Detector Fork
 
-# 🔍 DPI Detector
-[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Docker](https://img.shields.io/badge/docker-ready-brightgreen.svg)](https://github.com/Runnin4ik/dpi-detector/pkgs/container/dpi-detector)
+Форк `dpi-detector` под практическую оценку серверов и VPN-нод.
 
-Инструмент для анализа цензуры трафика в России: обнаруживает и классифицирует блокировки сайтов, хостингов и CDN (TCP16-20 блокировки), а также подмену DNS-запросов провайдером.
+Эта версия ориентирована не только на поиск DPI-проблем, но и на быстрый ответ на вопрос: подходит ли конкретный сервер как основная VPN-нода, запасная нода или слабый вариант.
 
-> <b>Инструмент был полезен? Поставь ⭐ в качестве «спасибо»!</b>
+## Что умеет
 
-![Пример результатов](https://raw.githubusercontent.com/Runnin4ik/dpi-detector/main/images/screenshot.png)
+- проверка подмены DNS и доступности DoH
+- проверка доступности доменов по HTTP, TLS 1.2 и TLS 1.3
+- проверка TCP 16-20KB блокировок на хостингах и CDN
+- подбор белых SNI для ASN, если есть признаки блокировки
+- проверка Telegram: download, upload и доступность DC
+- итоговый рейтинг пригодности сервера под VPN
 
-## 🎯 Возможности
+## Что добавлено в этом форке
 
-- **TCP 16-20KB блокировка** — обнаруживает обрыв соединения к CDN и хостингам после передачи 14-34KB
-- **Подбор белых SNI для AS хостингов/CDN**
-- **Проверка доступности заблокированных сайтов** — тестирует TLS 1.2, TLS 1.3 и HTTP
-- **Проверка DNS** — выявляет перехват UDP/53, подмену IP-адресов заглушками и блокировку DoH
-- **Классификация ошибок** — различает TCP RST, Connection Abort,
-  Handshake/Read Timeout, TLS MITM, SNI-блокировку и другие
-- **Гибкая настройка** — таймауты, потоки, свои списки доменов, DNS-серверы
-  и IPv4-only режим
+- итоговая оценка `VPN-нода 0-100`
+- буквенный рейтинг `A-F`
+- краткий блок `Плюсы / Риски / Вывод` в финальной сводке
+- автонормализация `tcp16.json` при загрузке
+- исправление старых опечаток поля `port` в кастомных целях
+- защита от дублей `id` в TCP-целях
 
-> [!WARNING]  
-> Если у вас запущены средства обхода блокировок (например, zapret или GoodbyeDPI), результаты тестов будут искажены. Чтобы узнать реальное состояние фильтров вашего провайдера, выключите их перед началом проверки или убедитесь, что они работают в режиме обработки всех пакетов (режим ALL), а не только по списку.
+## Как читать итог
 
-### ⚙️ Кастомизация
-Следующие файлы могут быть переопределены. Инструкции ниже.
+После прогона тестов в финальной панели выводится:
 
-1.  `domains.txt` — список доменов для проверки.
-2.  `tcp16.json` — цели для теста TCP 16-20KB.
-3.  `config.yml` — конфигурация.
-4.  `whitelist_sni.txt` — список белых SNI для подбора рабочих
+- `VPN-нода 0-100`
+- буква `A-F`
+- уровень доверия к оценке
+- краткий текстовый вывод
 
-### ⚙️ Запуск с параметрами (CLI)
+Пример интерпретации:
 
-| Параметр              | Описание                                                            | Пример использования         |
-|:----------------------|:--------------------------------------------------------------------|:-----------------------------|
-| `-t`, `--tests`       | Указать номера тестов (без меню).                                   | `-t 123` или `-t 4`          |
-| `-p`, `--proxy`       | Использовать прокси (переопределяет `PROXY_URL`).                   | `-p socks5://127.0.0.1:1080` |
-| `-d`, `--domain`      | Проверка отдельных доменов. Игнорирует `domains.txt`                | `-d vk.com -d youtube.com`   |
-| `-c`, `--concurrency` | Количество конкурентных запросов (переопределяет `MAX_CONCURRENT`). | `-c 50`                      |
-| `-o`, `--output`      | Автоматически сохранить лог в указанный файл.                       | `-o report_log.txt`          |
-| `--batch`             | Отключает все вопросы и паузы в консоли.                            | `--batch`                    |
+- `A` — отлично подходит под основную VPN-ноду
+- `B` — хорошая нода, но стоит мониторить отдельные риски
+- `C` — годится как запасная или нишевая
+- `D/F` — плохой кандидат, лучше искать другой маршрут или провайдера
 
-## 🐋 Docker (Рекомендовано)
+## Важное отличие от upstream
 
-### Быстрый старт
-Docker проверит наличие обновлений и скачает свежую версию перед запуском
+Если вы запускаете официальный образ:
+
 ```bash
 docker run --rm -it --pull=always ghcr.io/runnin4ik/dpi-detector:latest
 ```
-Или запускайте с указанием определенной версии  
-Это избавляет от постоянных скачиваний, но нужно следить за актуальностью версий
+
+то вы запускаете **upstream-версию**, а не этот форк.
+
+В official-образе **нет**:
+
+- нашего VPN-рейтинга
+- правок описания под форк
+- улучшенной нормализации кастомного `tcp16.json`
+
+## Запуск этого форка
+
+### Вариант 1. Python
+
 ```bash
-docker run --rm -it ghcr.io/runnin4ik/dpi-detector:3.1.0
+git clone https://github.com/kislenka/dpi-detector.git
+cd dpi-detector
+python -m pip install -r requirements.txt
+python dpi_detector.py
 ```
 
-#### С кастомизацией
-Переопределите нужные файлы: `domains.txt`, `tcp16.json`...
-Запустите с монтированием (можно монтировать один или несколько файлов)
+Пример:
+
 ```bash
-# Bash (Linux / macOS)
-docker run --rm -it --pull=always \
+python dpi_detector.py -t 12345 --batch
+```
+
+### Вариант 2. Docker локально из форка
+
+Пока для форка не опубликован отдельный Docker image, самый прямой путь такой:
+
+```bash
+git clone https://github.com/kislenka/dpi-detector.git
+cd dpi-detector
+docker build -t kislenka/dpi-detector .
+docker run --rm -it kislenka/dpi-detector
+```
+
+С кастомными файлами:
+
+```bash
+docker run --rm -it \
   -v $(pwd)/domains.txt:/app/domains.txt \
   -v $(pwd)/tcp16.json:/app/tcp16.json \
   -v $(pwd)/config.yml:/app/config.yml \
   -v $(pwd)/whitelist_sni.txt:/app/whitelist_sni.txt \
-  ghcr.io/runnin4ik/dpi-detector:latest -t 123 -d discord.com
+  kislenka/dpi-detector -t 12345
 ```
-<details>
-<summary>Команды для PowerShell и CMD</summary>
 
-PowerShell (Windows)
-```bash
-docker run --rm -it --pull=always `
+### PowerShell
+
+```powershell
+docker run --rm -it `
   -v ${PWD}/domains.txt:/app/domains.txt `
   -v ${PWD}/tcp16.json:/app/tcp16.json `
   -v ${PWD}/config.yml:/app/config.yml `
   -v ${PWD}/whitelist_sni.txt:/app/whitelist_sni.txt `
-  ghcr.io/runnin4ik/dpi-detector:latest
+  kislenka/dpi-detector -t 12345
 ```
 
-CMD (Windows)
+## CLI параметры
+
+- `-t`, `--tests` — какие тесты запускать, например `123`, `12345`
+- `-p`, `--proxy` — прокси URL
+- `-d`, `--domain` — проверить отдельные домены
+- `-c`, `--concurrency` — число параллельных запросов
+- `-o`, `--output` — сохранить лог в файл
+- `--batch` — без вопросов и пауз
+
+## Кастомизация
+
+Можно переопределять:
+
+- `domains.txt` — список доменов
+- `tcp16.json` — хосты для TCP 16-20KB теста
+- `config.yml` — таймауты, DNS, потоки и другие параметры
+- `whitelist_sni.txt` — список белых SNI
+
+Этот форк особенно удобен, если вы держите собственный набор целей под:
+
+- VPN-ноды
+- VPS в разных ASN
+- CDN и хостинги, которые вы реально используете
+- регулярную проверку серверов перед вводом в прод
+
+## Рекомендация по использованию
+
+Для оценки сервера под VPN лучше запускать минимум:
+
 ```bash
-docker run --rm -it --pull=always ^
-  -v %cd%/domains.txt:/app/domains.txt ^
-  -v %cd%/tcp16.json:/app/tcp16.json ^
-  -v %cd%/config.yml:/app/config.yml ^
-  -v %cd%/whitelist_sni.txt:/app/whitelist_sni.txt ^
-  ghcr.io/runnin4ik/dpi-detector:latest
-```
-</details>
-
-## 🐍 Python 3.8+
-**Требования:** httpx[socks]>=0.28.1, rich>=14.3.2, PyYAML>=6.0.3
-
-**Установка:**
-```bash
-# скачайте и распакуйте архив руками, или:
-git clone https://github.com/Runnin4ik/dpi-detector.git
-cd dpi-detector
-python -m pip install -r requirements.txt
+python dpi_detector.py -t 12345 --batch
 ```
 
-**Запуск:**
-```bash
-python dpi_detector.py
-# или с параметрами
-python dpi_detector.py -t 2 -d discord.com -p socks5://127.0.0.1:1080
-```
+Именно такой набор обычно дает наиболее полезную итоговую оценку.
 
-## 🪟 Windows (Готовые сборки)
+## Откуда взят проект
 
-Для использования программы не обязательно устанавливать Python. Скачайте подходящий `.exe` файл в разделе [Releases -> Assets](https://github.com/Runnin4ik/dpi-detector/releases):
+База форка: [Runnin4ik/dpi-detector](https://github.com/Runnin4ik/dpi-detector)
 
-*   **[Скачать для Windows 10 / 11](https://github.com/Runnin4ik/dpi-detector/releases/download/v3.1.0/dpi_detector_v3.1.0_win10.exe)**
-*   **[Скачать для Windows 7 / 8](https://github.com/Runnin4ik/dpi-detector/releases/download/v3.1.0/dpi_detector_v3.1.0_win7.exe)**
+Оригинальному проекту — уважение за сильную основу по DPI-диагностике.
 
-#### С кастомизацией
+## Лицензия
 
-Переопределите нужные файлы: `domains.txt`, `tcp16.json`, `config.yml`, `whitelist_sni.txt`
-И положите их в папку рядом с `.exe` файлом.
-
-## VPN Node Rating
-
-В этой форк-версии добавлена итоговая оценка пригодности узла под VPN:
-
-- `VPN-нода 0-100` и буквенный рейтинг `A-F`
-- краткие плюсы и риски по результатам DNS, TLS/HTTP, TCP 16-20KB и Telegram
-- практический вывод, подходит ли узел как основная, запасная или слабая VPN-нода
-
-Оценка появляется в итоговой панели автоматически и особенно полезна при прогоне нескольких серверов подряд.
-
-## Custom Fork Notes
-
-В форке также добавлено:
-
-- автонормализация `tcp16.json` при загрузке
-- исправление опечаток поля `port` в кастомных целях
-- защита от дублирующихся `id` в TCP-целях
-
-Это удобно для своих наборов целей под конкретный сервер, ASN или VPN-пул, когда список часто редактируется вручную.
-
-## 🤝 Вклад в проект
-Приветствуются Issue и Pull Request'ы и предложения функционала!
-
-## 📜 Лицензия
-
-[MIT License](LICENSE) — свободное использование, модификация и распространение.
-
-## ⚠️ Дисклеймер
-
-Этот инструмент предназначен исключительно для образовательных и диагностических целей. Автор не несет ответственности за использование данного ПО.
-
-## 🙏 Благодарности
-
-- Проекту [hyperion-cs/dpi-checkers](https://github.com/hyperion-cs/dpi-checkers) за вдохновение
-- **0ka** за помощь и консультации
-
-## 👀Похожие проекты
-Советуем также взглянуть:
-- [hyperion-cs/dpi-ch](https://github.com/hyperion-cs/dpi-checkers/tree/main/ru/dpi-ch) — _DPI comprehensive checker (go)_
-
-## 💖 Поддержка проекта
-
-### [Картой или по СБП](https://pay.cloudtips.ru/p/1421d4c7)
-
-| Валюта   | Сеть   | Адрес                                              |
-|----------|--------|----------------------------------------------------|
-| **USDT** | TRC20  | `TGtcb4JMT5F3KiEL16oZnj9ijB2Pag1jCX`               |
-| **USDT** | ERC20  | `0x97413028546b5da4cbba4d9838c9d635a5333ab1`       |
-| **USDT** | TON    | `UQApgV57_p0hQGBV9oxrDi7SvKqgN3pigw5YEA28VShrZ7X_` |
-| **TON**  |        | `UQApgV57_p0hQGBV9oxrDi7SvKqgN3pigw5YEA28VShrZ7X_` |
-| **BNB**  | BEP-20 | `0x97413028546b5da4cbba4d9838c9d635a5333ab1`       |
-| **SOL**  |        | `9obMiD8hYfs4D8XskQjHPPtAKYPq9CaEZTbBMxtCjQ3k`     |
-| **BTC**  |        | `bc1q7579xpmxcrz34lzmrxfupkpcczvemeqk2e9f4h`       |
-| **ETH**  |        | `0x97413028546b5da4cbba4d9838c9d635a5333ab1`       |
-
-## Star History
-
-<a href="https://www.star-history.com/#Runnin4ik/dpi-detector&type=date&legend=top-left">
- <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=Runnin4ik/dpi-detector&type=date&theme=dark&legend=top-left" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=Runnin4ik/dpi-detector&type=date&legend=top-left" />
-   <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=Runnin4ik/dpi-detector&type=date&legend=top-left" />
- </picture>
-</a>
+[MIT](LICENSE)
