@@ -26,7 +26,7 @@ from core.dns_scanner import check_dns_integrity, collect_stub_ips_silently
 from utils.files import load_domains, load_tcp_targets, load_whitelist_sni, get_base_dir
 
 CURRENT_VERSION = "3.1.0"
-GITHUB_REPO     = "Runnin4ik/dpi-detector"
+GITHUB_REPO     = "kislenka/dpi-detector"
 
 DOMAINS         = load_domains()
 TCP_16_20_ITEMS = load_tcp_targets()
