@@ -71,9 +71,17 @@ python dpi_detector.py
 python dpi_detector.py -t 12345 --batch
 ```
 
-### Вариант 2. Docker локально из форка
+### Вариант 2. Docker через GHCR
 
-Пока для форка не опубликован отдельный Docker image, самый прямой путь такой:
+После первого успешного запуска GitHub Actions образ будет доступен так:
+
+```bash
+docker run --rm -it ghcr.io/kislenka/dpi-detector:latest
+```
+
+### Вариант 3. Docker локально из форка
+
+Если образ еще не опубликован или нужно быстро проверить локальные изменения:
 
 ```bash
 git clone https://github.com/kislenka/dpi-detector.git
