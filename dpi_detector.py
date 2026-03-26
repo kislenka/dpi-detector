@@ -190,6 +190,166 @@ def _format_summary(
     return lines
 
 
+def _clamp(value: float, low: float = 0.0, high: float = 1.0) -> float:
+    return max(low, min(high, value))
+
+
+def _pick_vpn_grade(score: int) -> str:
+    if score >= 85:
+        return "A"
+    if score >= 70:
+        return "B"
+    if score >= 55:
+        return "C"
+    if score >= 40:
+        return "D"
+    return "F"
+
+
+def _vpn_grade_label(grade: str) -> str:
+    labels = {
+        "A": "отлично подходит",
+        "B": "хорошая база для VPN",
+        "C": "можно использовать с оговорками",
+        "D": "рискованно для VPN",
+        "F": "плохо подходит для VPN",
+    }
+    return labels.get(grade, "оценка недоступна")
+
+
+def _build_vpn_assessment(
+    run_dns: bool,
+    run_domains: bool,
+    run_tcp: bool,
+    run_telegram: bool,
+    dns_intercept: int,
+    doh_unavailable: bool,
+    domain_stats,
+    tcp_stats,
+    telegram_stats=None,
+) -> List[str]:
+    weights = {
+        "dns": 20,
+        "domains": 35,
+        "tcp": 30,
+        "telegram": 15,
+    }
+    active = []
+    for key, enabled in (
+        ("dns", run_dns),
+        ("domains", run_domains and domain_stats),
+        ("tcp", run_tcp and tcp_stats),
+        ("telegram", run_telegram and telegram_stats),
+    ):
+        if enabled:
+            active.append(key)
+
+    if not active:
+        return []
+
+    max_score = sum(weights[k] for k in active)
+    score = 0.0
+    reasons: List[str] = []
+    risks: List[str] = []
+
+    if run_dns:
+        total_dns = len(config.DNS_CHECK_DOMAINS) or 1
+        clean_ratio = _clamp((total_dns - dns_intercept) / total_dns)
+        dns_points = weights["dns"] * clean_ratio
+        if doh_unavailable:
+            dns_points *= 0.35
+            risks.append("DoH недоступен")
+        if dns_intercept > 0:
+            risks.append(f"DNS-аномалии: {dns_intercept}/{total_dns}")
+        else:
+            reasons.append("нет признаков DNS-подмены")
+        score += dns_points
+
+    if run_domains and domain_stats:
+        total = domain_stats.get("total", 0) or 1
+        ok_ratio = _clamp(domain_stats.get("ok", 0) / total)
+        blocked_ratio = _clamp(domain_stats.get("blocked", 0) / total)
+        timeout_ratio = _clamp(domain_stats.get("timeout", 0) / total)
+        dns_fail_ratio = _clamp(domain_stats.get("dns_fail", 0) / total)
+        domain_quality = _clamp(ok_ratio - blocked_ratio * 0.85 - timeout_ratio * 0.45 - dns_fail_ratio * 0.7)
+        score += weights["domains"] * domain_quality
+        if ok_ratio >= 0.85:
+            reasons.append(f"доменный проход {int(ok_ratio * 100)}%")
+        if blocked_ratio > 0.15:
+            risks.append(f"много L7/TLS блокировок: {domain_stats.get('blocked', 0)}")
+        if timeout_ratio > 0.2:
+            risks.append(f"много timeout: {domain_stats.get('timeout', 0)}")
+
+    if run_tcp and tcp_stats:
+        total = tcp_stats.get("total", 0) or 1
+        ok_ratio = _clamp(tcp_stats.get("ok", 0) / total)
+        blocked_ratio = _clamp(tcp_stats.get("blocked", 0) / total)
+        mixed_ratio = _clamp(tcp_stats.get("mixed", 0) / total)
+        tcp_quality = _clamp(ok_ratio - blocked_ratio * 0.9 - mixed_ratio * 0.4)
+        score += weights["tcp"] * tcp_quality
+        if ok_ratio >= 0.8:
+            reasons.append(f"хостинги/CDN проходят {int(ok_ratio * 100)}%")
+        if blocked_ratio > 0.1:
+            risks.append(f"TCP 16-20KB дропы: {tcp_stats.get('blocked', 0)}")
+        if mixed_ratio > 0.15:
+            risks.append(f"нестабильные TCP-пути: {tcp_stats.get('mixed', 0)}")
+
+    if run_telegram and telegram_stats:
+        dl = telegram_stats.get("download", {}) if isinstance(telegram_stats, dict) else {}
+        ul = telegram_stats.get("upload", {}) if isinstance(telegram_stats, dict) else {}
+        dc_total = telegram_stats.get("dc_total", 0) or 1
+        dc_reachable = telegram_stats.get("dc_reachable", 0)
+
+        status_scores = {
+            "ok": 1.0,
+            "slow": 0.55,
+            "stalled": 0.25,
+            "blocked": 0.0,
+        }
+        tg_quality = (
+            status_scores.get(dl.get("status"), 0.0) * 0.45 +
+            status_scores.get(ul.get("status"), 0.0) * 0.35 +
+            _clamp(dc_reachable / dc_total) * 0.20
+        )
+        score += weights["telegram"] * _clamp(tg_quality)
+        if dl.get("status") == "ok" and ul.get("status") == "ok":
+            reasons.append("Telegram-путь не выглядит задушенным")
+        if dl.get("status") in ("blocked", "stalled") or ul.get("status") in ("blocked", "stalled"):
+            risks.append("Telegram дает признаки душения")
+        if dc_reachable < dc_total:
+            risks.append(f"Telegram DC доступны не все: {dc_reachable}/{dc_total}")
+
+    final_score = int(round((score / max_score) * 100)) if max_score else 0
+    grade = _pick_vpn_grade(final_score)
+    confidence = {
+        1: "низкое",
+        2: "среднее",
+        3: "выше среднего",
+        4: "высокое",
+    }.get(len(active), "низкое")
+
+    lines = [
+        f"[bold]VPN-нода[/bold]     [bold cyan]{final_score}/100[/bold cyan]  "
+        f"[bold]{grade}[/bold]  [dim]({_vpn_grade_label(grade)})[/dim]",
+        f"[bold]Доверие[/bold]      [dim]{confidence}: учтено тестов {len(active)}/4[/dim]",
+    ]
+
+    if reasons:
+        lines.append(f"[bold]Плюсы[/bold]        [green]{'; '.join(reasons[:3])}[/green]")
+    if risks:
+        lines.append(f"[bold]Риски[/bold]        [yellow]{'; '.join(risks[:3])}[/yellow]")
+
+    recommendation = {
+        "A": "можно спокойно брать под VPN/transport",
+        "B": "подойдет для VPN, но лучше мониторить TCP и Telegram",
+        "C": "для запасной ноды нормально, для основной уже есть риск",
+        "D": "лучше не использовать как основную VPN-ноду",
+        "F": "нода плохая: нужен другой провайдер или маршрут",
+    }
+    lines.append(f"[bold]Вывод[/bold]        {recommendation[grade]}")
+    return lines
+
+
 def is_newer(latest: str, current: str) -> bool:
     """Сравнивает версии. Возвращает True, если на GitHub версия выше текущей."""
     try:
@@ -315,6 +475,14 @@ async def main():
             telegram_stats=telegram_stats,
             doh_unavailable=doh_unavailable,
         )
+        vpn_lines = _build_vpn_assessment(
+            run_dns, run_domains, run_tcp, run_telegram,
+            dns_intercept_count, doh_unavailable,
+            domain_stats, tcp_stats,
+            telegram_stats=telegram_stats,
+        )
+        if vpn_lines:
+            summary_lines.extend([""] + vpn_lines)
         console.print(Panel(
             "\n".join(summary_lines),
             title="[bold]Итог[/bold]",

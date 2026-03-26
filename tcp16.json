@@ -1,7 +1,7 @@
 [
     {"id": "HE-01", "asn": "24940☆", "provider": "Hetzner", "ip": "91.98.156.82", "port": 443},
     {"id": "HE-02", "asn": "24940☆", "provider": "Hetzner", "ip": "46.62.154.37", "port": 443},
-    {"id": "HE-02", "asn": "24940☆", "provider": "Hetzner HTTP", "ip": "185.189.229.124", ",port": 80},
+    {"id": "HE-02-HTTP", "asn": "24940☆", "provider": "Hetzner HTTP", "ip": "185.189.229.124", "port": 80},
     {"id": "HE-03", "asn": "213230", "provider": "Hetzner Cloud 2", "ip": "5.161.249.234", "port": 443},
     {"id": "HE-04", "asn": "213230", "provider": "Hetzner Cloud 2", "ip": "178.156.198.203", "port": 443},
     {"id": "HE-05", "asn": "212317", "provider": "Hetzner Cloud 3", "ip": "5.78.155.139", "port": 443},
@@ -35,8 +35,8 @@
     {"id": "AK-09", "asn": "33905", "provider": "Akamai 4", "ip": "23.11.41.163", "port": 443, "sni": "media.miele.com"},
     {"id": "AK-10", "asn": "63949", "provider": "Akamai Cloud", "ip": "172.236.2.30", "port": 443, "sni": "media.miele.com"},
     {"id": "AK-11", "asn": "63949", "provider": "Akamai Cloud", "ip": "212.71.233.10", "port": 443, "sni": "media.miele.com"},
-    {"id": "AK-10", "asn": "63949", "provider": "Akamai Cloud", "ip": "172.236.2.30", "port": 443},
-    {"id": "AK-11", "asn": "63949", "provider": "Akamai Cloud", "ip": "212.71.233.10", "port": 443},
+    {"id": "AK-10-NOSNI", "asn": "63949", "provider": "Akamai Cloud", "ip": "172.236.2.30", "port": 443},
+    {"id": "AK-11-NOSNI", "asn": "63949", "provider": "Akamai Cloud", "ip": "212.71.233.10", "port": 443},
 
     {"id": "AWS-01", "asn": "16509☆", "provider": "AWS 1", "ip": "16.15.219.241", "port": 443},
     {"id": "AWS-02", "asn": "16509☆", "provider": "AWS 1", "ip": "76.223.67.41", "port": 443},
@@ -66,7 +66,7 @@
     {"id": "GCR-03", "asn": "199524", "provider": "Gcore 1", "ip": "185.145.113.133", "port": 443},
     {"id": "GCR-04", "asn": "199524", "provider": "Gcore 1", "ip": "82.117.228.93", "port": 443},
 
-    {"id": "GCR-05", "asn": "202422", "provider": "Gcore 2", "ip": "5.8.34.27", ",port": 443},
+    {"id": "GCR-05", "asn": "202422", "provider": "Gcore 2", "ip": "5.8.34.27", "port": 443},
     {"id": "GCR-06", "asn": "202422", "provider": "Gcore 2", "ip": "5.188.190.167", "port": 443},
 
     {"id": "OR-01", "asn": "31898", "provider": "Oracle Cloud", "ip": "152.67.64.161", "port": 443},
