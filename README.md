@@ -132,6 +132,34 @@ python dpi_detector.py -t 12345 --batch
 docker run --rm -it ghcr.io/kislenka/dpi-detector:latest -t 12345 --batch
 ```
 
+## Подготовка Remna-ноды
+
+В репозитории есть готовый bootstrap-скрипт для Ubuntu 24:
+
+`[scripts/setup_remna_node.sh](/C:/Users/bot22/Documents/New%20project/dpi-detector-analysis/scripts/setup_remna_node.sh)`
+
+Он:
+
+- обновляет систему
+- ставит базовые сетевые утилиты
+- включает `bbr + fq`
+- применяет TCP/sysctl-тюнинг под стабильный поток
+- поднимает лимиты `nofile`
+- опционально ставит и настраивает `fail2ban` для `sshd`
+
+Пример запуска на сервере:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/kislenka/dpi-detector/main/scripts/setup_remna_node.sh -o setup_remna_node.sh
+bash setup_remna_node.sh --ssh-port 22
+```
+
+Если `fail2ban` не нужен:
+
+```bash
+bash setup_remna_node.sh --no-fail2ban
+```
+
 ## Репозиторий
 
 GitHub: [https://github.com/kislenka/dpi-detector](https://github.com/kislenka/dpi-detector)
